@@ -1,0 +1,85 @@
+version: "3.6"
+services:
+  nginx:
+    container_name: nginx
+    build:
+      dockerfile: Dockerfile
+      context: ./config/nginx
+    working_dir: /var/www/html
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./frontend:/var/www/html/frontend
+      - ./backend:/var/www/html/backend
+      - ./config/nginx/includes:/etc/nginx/includes:ro
+      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./config/nginx/sites-dev:/etc/nginx/sites-enabled
+    depends_on:
+      - backend
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+
+  mysql:
+    image: mysql:latest
+    container_name: mysql
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_DATABASE=${DB_NAME}
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
+      - MYSQL_USER=${DB_USERNAME}
+      - MYSQL_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - mysqldata:/var/lib/mysql
+
+  frontend:
+    user: node
+    container_name: frontend
+    build:
+      dockerfile: Dockerfile
+      context: ./config/frontend
+    working_dir: /var/www/html/frontend
+    volumes:
+      - ./frontend:/var/www/html/frontend
+    command: sh -c "node .output/server/index.mjs"
+    stdin_open: true
+    restart: unless-stopped
+    tty: true
+
+  backend:
+    container_name: backend
+    build:
+      dockerfile: Dockerfile
+      context: ./config/backend
+    working_dir: /var/www/html/backend
+    volumes:
+      - ./backend:/var/www/html/backend
+    stdin_open: true
+    restart: unless-stopped
+    tty: true
+    depends_on:
+      - redis
+      - mysql
+    expose:
+      - "9000"
+
+  backend-queue:
+    image: nil-docker-backend:latest
+    container_name: backend-queue
+    restart: always
+    command: sh -c "php artisan queue:work"
+    working_dir: /var/www/html/backend
+    volumes:
+      - ./backend:/var/www/html/backend
+    depends_on:
+      - backend
+
+# Volumes
+volumes:
+  mysqldata:
+    driver: local
